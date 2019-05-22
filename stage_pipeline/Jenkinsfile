@@ -1,0 +1,41 @@
+pipeline {
+    agent any
+    parameters{
+      string(
+        name: 'JIRA_URL',
+        description: 'The URL of the JIRA ticket for this release.',
+        defaultValue: '')
+      booleanParam(
+        name: 'OVERRIDE_RELEASE_WINDOW',
+        description: 'Overrides release window if checked',
+        defaultValue: false)
+    }
+    stages {
+        stage('Check Release Window') {
+            steps {
+                build job: 'check_release_window',
+                parameters: [
+                    string(name: 'JOB_NAME', value: "${JOB_NAME}"),
+                    booleanParam(name: 'OVERRIDE_RELEASE_WINDOW', value: "${OVERRIDE_RELEASE_WINDOW}"),
+                ]
+            }
+        }
+        stage('Release') {
+            steps {
+                script {
+                    def DC = sh(script: 'echo ${HOST} | cut -d"." -f2', returnStdout: true)
+                    build job: 'Release',
+                    parameters: [
+                        string(name: 'JIRA_TICKET', description: 'The URL of the JIRA ticket for this release.', value: "${JIRA_URL}"),
+                        string(name: 'NODE_GROUP', value: "${NODE_GROUP}"),
+                        string(name: 'DC', value: "${DC}"),
+                        string(name: 'ENV', value: "${ENV}"),
+                        string(name: 'CLASHBOARD_VARIABLE', value: "${CLASHBOARD_VARIABLE}"),
+                        string(name: 'CLASHBOARD_VARIABLE_VERSION', value: "${CLASHBOARD_VARIABLE_VERSION}"),
+                        string(name: 'SYSTEM_LIST', value: "${HOST}")
+                    ]
+                }
+            }
+        }
+    }
+}

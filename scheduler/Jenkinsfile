@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+    parameters{
+      string(
+        name: 'TICKET',
+        description: 'Mention the ticket to update the release status',
+        defaultValue: '')
+      string(
+        name: 'VERSION',
+        description: 'CLASHBOARD_VARIABLE_VERSION to release',
+        defaultValue: '')        
+      choice(
+        name: 'ENVIRONMENT',
+        description: 'Select the environment',
+        choices: 'dev\nqa\nprod')
+    }
+    stages {
+        stage('Stop scheduler') {
+            steps {
+                script {
+                    if (params.TICKET == '' || params.VERSION == '') {
+                        currentBuild.result = 'ABORTED'
+                        error ('TICKET or VERSION should not be empty')
+                    }
+                    sh 'ansible-playbook -i inventory/scheduler_release_${ENVIRONMENT}.ini playbooks/scheduler_release_stop.yaml'
+                }
+            }
+        }
+        stage('Config change pause') {
+            steps {
+                script {
+                    try {
+                        timeout(time:1, unit:'DAYS') {
+                            input message: 'Please merge your config changes (if any) before proceeding'
+                        }
+                    } catch(err) { // timeout reached or input false
+                        currentBuild.result = 'FAILURE'
+                        error ('Aborted')
+                    }
+                }
+            }
+        }
+        stage('Start scheduler') {
+            steps {
+                script {
+                    sh 'ansible-playbook -i inventory/scheduler_release_${ENVIRONMENT}.ini playbooks/scheduler_release_start.yaml'
+                }
+            }
+        }
+    }
+    post {
+        success {
+            script {
+            sh '''
+            /app/bin/jira_api.py -t ${TICKET} -c "Completed by: ${BUILD_USER_ID} job: ${BUILD_URL}"
+            '''
+            }
+        }
+    }
+}
