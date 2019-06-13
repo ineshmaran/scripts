@@ -2,8 +2,8 @@ pipeline {
     agent any
     parameters{
       string(
-        name: 'JIRA_URL',
-        description: 'The URL of the JIRA ticket for this release.',
+        name: 'JIRA_TICKET',
+        description: 'ID of JIRA ticket associated with the release (e.g. REL-1234)',
         defaultValue: '')
       booleanParam(
         name: 'OVERRIDE_RELEASE_WINDOW',
@@ -23,19 +23,47 @@ pipeline {
         stage('Release') {
             steps {
                 script {
-                    def DC = sh(script: 'echo ${HOST} | cut -d"." -f2', returnStdout: true)
+                    currentBuild.description = "HOST: ${SYSTEM_LIST}"
+                    def DC = sh(script: 'echo ${SYSTEM_LIST} | cut -d"." -f2', returnStdout: true)
                     build job: 'Release',
                     parameters: [
-                        string(name: 'JIRA_TICKET', description: 'The URL of the JIRA ticket for this release.', value: "${JIRA_URL}"),
+                        string(name: 'JIRA_TICKET', description: 'ID of JIRA ticket associated with the release (e.g. REL-1234)', value: "${JIRA_TICKET}"),
                         string(name: 'NODE_GROUP', value: "${NODE_GROUP}"),
                         string(name: 'DC', value: "${DC}"),
                         string(name: 'ENV', value: "${ENV}"),
                         string(name: 'CLASHBOARD_VARIABLE', value: "${CLASHBOARD_VARIABLE}"),
                         string(name: 'CLASHBOARD_VARIABLE_VERSION', value: "${CLASHBOARD_VARIABLE_VERSION}"),
-                        string(name: 'SYSTEM_LIST', value: "${HOST}")
+                        string(name: 'RESOLVE_TICKET', value: 'false'),
+                        string(name: 'SYSTEM_LIST', value: "${SYSTEM_LIST}")
                     ]
                 }
             }
         }
     }
+    post {
+        always {
+            slackNotifier(currentBuild.currentResult, '#testing_channel')
+        }
+    }
+}
+def slackNotifier(String buildResult, slack_channel) {
+    def color
+    switch (buildResult) {
+        case 'SUCCESS':
+            color = "good"
+            break
+        case 'FAILURE':
+            color = "danger"
+            break
+        case 'UNSTABLE':
+            color = "warning"
+            break
+        default:
+            color = "danger"
+            break
+    }
+    slackSend channel: slack_channel,
+    tokenCredentialId: 'slack_token',
+    color: "${color}",
+    message: "*Build URL:* ${env.BUILD_URL}console \n *Node Group:* `${NODE_GROUP}` \n *System List:* `${SYSTEM_LIST}` \n *Clashboard Variable:* `${CLASHBOARD_VARIABLE}` \n *Version:* `${CLASHBOARD_VARIABLE_VERSION}` \n *Ticket:* ${JIRA_TICKET}"
 }
